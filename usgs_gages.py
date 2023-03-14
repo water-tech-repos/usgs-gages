@@ -66,7 +66,6 @@ class UsgsSiteServiceRequest:
         self.lat_north = lat_north
 
     def get(self) -> requests.Response:
-        self.start_dt.isoformat()
         response = requests.get(USGS_SITE_API_BASE_URL, {
             'format': 'rdb',
             'bBox': f'{self.lon_west:.7f},{self.lat_south:.7f},{self.lon_east:.7f},{self.lat_north:.7f}',
