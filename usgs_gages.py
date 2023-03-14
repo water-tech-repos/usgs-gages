@@ -9,7 +9,6 @@ TODO:
     * endDt
     * period
     * modifiedSince
-* Use Git
 * Unit tests
 * Proper type hints
 * Proper docstrings
@@ -17,6 +16,7 @@ TODO:
 
 DONE:
 * Add a '--site-status' option
+* Use Git
 """
 
 import arcpy
@@ -131,7 +131,8 @@ def get_wgs84_extent(feature_class: str) -> Tuple[arcpy.Point, arcpy.Point]:
     return lower_left, upper_right
 
 
-def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: UsgsSiteStatus, start_dt: Optional[date], end_dt: Optional[date],
+def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: UsgsSiteStatus,
+         start_dt: Optional[date] = None, end_dt: Optional[date] = None,
          period: Optional[str] = None, modified_since: Optional[date] = None):
     if clip:
         output_dirname = 'memory'

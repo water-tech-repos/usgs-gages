@@ -45,6 +45,22 @@ class GetUsgsGages(object):
         site_status.value = usgs_gages.UsgsSiteStatus.ALL.value
         site_status.filter.list = [s.value for s in usgs_gages.UsgsSiteStatus]
 
+        start_dt = arcpy.Parameter(
+            displayName="Start date",
+            name="start_dt",
+            datatype="GPDate",
+            parameterType="Optional",
+            direction="Input")
+        start_dt.value = None
+
+        end_dt = arcpy.Parameter(
+            displayName="End date",
+            name="end_dt",
+            datatype="GPDate",
+            parameterType="Optional",
+            direction="Input")
+        end_dt.value = None
+
         clip = arcpy.Parameter(
             displayName="Clip to extent features",
             name="clip",
@@ -61,7 +77,7 @@ class GetUsgsGages(object):
             direction="Input")
         overwrite.value = False
         
-        parameters = [extent, out_features, site_status, clip, overwrite]
+        parameters = [extent, out_features, site_status, start_dt, end_dt, clip, overwrite]
         
         return parameters
 
