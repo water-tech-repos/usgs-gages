@@ -5,18 +5,19 @@ Query the NWIS Site Service
 
 TODO:
 * More query parameters
-    * startDt
-    * endDt
     * period
     * modifiedSince
-* Use Git
 * Unit tests
 * Proper type hints
 * Proper docstrings
 * Reimplement with open-source libraries
 
 DONE:
+* More query parameters
+    * startDt
+    * endDt
 * Add a '--site-status' option
+* Use Git
 """
 
 import arcpy
@@ -131,7 +132,8 @@ def get_wgs84_extent(feature_class: str) -> Tuple[arcpy.Point, arcpy.Point]:
     return lower_left, upper_right
 
 
-def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: UsgsSiteStatus, start_dt: Optional[date], end_dt: Optional[date],
+def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: UsgsSiteStatus,
+         start_dt: Optional[date] = None, end_dt: Optional[date] = None,
          period: Optional[str] = None, modified_since: Optional[date] = None):
     if clip:
         output_dirname = 'memory'
@@ -177,8 +179,8 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
         write_feature_class(output, df, fields, DEC_LONG_VA, DEC_LAT_VA)
 
 
-def get_usgs_gages(extent: str, output: str, overwrite: bool, clip: bool, site_status: UsgsSiteStatus):
-    main(extent, output, overwrite, clip, site_status)
+# alias for "main"
+get_usgs_gages = main
 
 
 if __name__ == '__main__':
