@@ -42,6 +42,7 @@ DEC_LONG_VA = 'dec_long_va'
 PANDAS_ESRI_DTYPES = {
     np.dtype('O'): 'TEXT',
     np.dtype('float64'): 'DOUBLE',
+    np.dtype('int64'): 'LONG',
 }
 
 
@@ -141,7 +142,6 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
         output_tmp = os.path.join(output_dirname, output_basename)
     else:
         output_dirname = os.path.dirname(output)
-        # output_basename = arcpy.ValidateTableName(os.path.basename(output), output_dirname)
         output_basename = os.path.basename(output)
 
     # get extent in WGS-84 coordinates
@@ -156,9 +156,13 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
 
     # load response into DataFrame
     df = parse_sites(usgs_gages_response.text)
+    print(df)
+    print(df.columns)
+    print(df.dtypes)
 
     # get mapping of DataFrame field names and ESRI field types
     fields = get_df_esri_types(df)
+    print(fields)
 
     if overwrite:
         arcpy.env.overwriteOutput = True
@@ -194,7 +198,11 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite', action='store_true', help="Overwrite an existing output feature class")
     parser.add_argument('--site-status', choices=[s.value for s in UsgsSiteStatus], default=UsgsSiteStatus.ALL.value,
                         help="Query for gages with a specific site status")
+    parser.add_argument('--period', help=("Query for gages that collected data in this period (e.g. 'P7D' for last 7 days; " 
+                                          "ISO 8601 Duration format, years and months are not supported)"))
     parser.add_argument('--start-dt', type=date.fromisoformat, help="Query for gages that collected data since this date")
     parser.add_argument('--end-dt', type=date.fromisoformat, help="Query for gages that collected data before this date")
     args = parser.parse_args()
+    if args.period and (args.start_dt or args.end_dt):
+        raise ValueError("Cannot specify both 'period' and 'start_dt'/'end_dt'")
     main(args.extent, args.output, args.overwrite, args.clip, UsgsSiteStatus(args.site_status), args.start_dt, args.end_dt)
