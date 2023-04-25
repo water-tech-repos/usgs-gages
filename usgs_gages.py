@@ -79,8 +79,23 @@ class UsgsSiteServiceRequest:
 
 
 def parse_sites(sites_data: str) -> pd.DataFrame:
-    df: pd.DataFrame = pd.read_csv(StringIO(sites_data), sep='\t', comment='#', header=[0, 1],
-                                   dtype={'site_no': str, 'huc_cd': str})
+    df: pd.DataFrame = pd.read_csv(StringIO(sites_data), sep='\t', comment='#', header=[0, 1])
+
+    # Get the level-0 and level-1 column names
+    level0 = df.columns.get_level_values(0)
+    level1 = df.columns.get_level_values(1)
+
+    # Create a list of tuples containing both level-0 and level-1 column names
+    combined_columns = list(zip(level0, level1))
+
+    # Update the columns of the DataFrame
+    df.columns = pd.MultiIndex.from_tuples(combined_columns)
+
+    # Now, specify the correct column names for the dtype parameter
+    combined_columns_dict = dict(combined_columns)
+    column_types = {("site_no", combined_columns_dict["site_no"]): str, ("huc_cd", combined_columns_dict["huc_cd"]): str}
+    df = df.astype(column_types)
+
     df.columns = df.columns.droplevel(1)
     df.dropna(subset=[DEC_LAT_VA, DEC_LONG_VA], inplace=True)
     return df
@@ -156,13 +171,9 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
 
     # load response into DataFrame
     df = parse_sites(usgs_gages_response.text)
-    print(df)
-    print(df.columns)
-    print(df.dtypes)
 
     # get mapping of DataFrame field names and ESRI field types
     fields = get_df_esri_types(df)
-    print(fields)
 
     if overwrite:
         arcpy.env.overwriteOutput = True
