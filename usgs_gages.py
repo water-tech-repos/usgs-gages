@@ -30,7 +30,7 @@ from datetime import date
 from enum import Enum
 from io import StringIO
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 USGS_SITE_API_BASE_URL = 'https://waterservices.usgs.gov/nwis/site/'
@@ -57,6 +57,7 @@ class UsgsSiteServiceRequest:
     lat_south: float
     lon_east: float
     lat_north: float
+    period: Optional[str] = None
     site_status: UsgsSiteStatus = UsgsSiteStatus.ALL
     start_dt: Optional[date] = None
     end_dt: Optional[date] = None
@@ -74,29 +75,31 @@ class UsgsSiteServiceRequest:
             'siteStatus': self.site_status.value,
             'startDt': self.start_dt.isoformat() if self.start_dt else None,
             'endDt': self.end_dt.isoformat() if self.end_dt else None,
+            'period': self.period if self.period else None,
         })
         return response
 
 
 def parse_sites(sites_data: str) -> pd.DataFrame:
-    df: pd.DataFrame = pd.read_csv(StringIO(sites_data), sep='\t', comment='#', header=[0, 1])
+    linecount = 0
+    datalines: List[str] = []
+    for line in sites_data.splitlines():
+        if line.startswith('#'):
+            # drop any comment lines
+            pass
+        elif linecount == 0:
+            column_names = line.split('\t')
+            linecount += 1
+        elif linecount == 1:
+            # column types -- ignore these, infer below in pd.read_csv
+            linecount += 1
+        else:
+            datalines.append(line)
+    data = '\n'.join(datalines)
 
-    # Get the level-0 and level-1 column names
-    level0 = df.columns.get_level_values(0)
-    level1 = df.columns.get_level_values(1)
+    df: pd.DataFrame = pd.read_csv(StringIO(data), sep='\t', comment='#', names=column_names, dtype={'site_no': str, 'huc_cd': str})
 
-    # Create a list of tuples containing both level-0 and level-1 column names
-    combined_columns = list(zip(level0, level1))
-
-    # Update the columns of the DataFrame
-    df.columns = pd.MultiIndex.from_tuples(combined_columns)
-
-    # Now, specify the correct column names for the dtype parameter
-    combined_columns_dict = dict(combined_columns)
-    column_types = {("site_no", combined_columns_dict["site_no"]): str, ("huc_cd", combined_columns_dict["huc_cd"]): str}
-    df = df.astype(column_types)
-
-    df.columns = df.columns.droplevel(1)
+    # drop rows with missing lat/long
     df.dropna(subset=[DEC_LAT_VA, DEC_LONG_VA], inplace=True)
     return df
 
@@ -167,6 +170,7 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
     usgs_gages_request.site_status = site_status
     usgs_gages_request.start_dt = start_dt
     usgs_gages_request.end_dt = end_dt
+    usgs_gages_request.period = period
     usgs_gages_response = usgs_gages_request.get()
 
     # load response into DataFrame
@@ -216,4 +220,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.period and (args.start_dt or args.end_dt):
         raise ValueError("Cannot specify both 'period' and 'start_dt'/'end_dt'")
-    main(args.extent, args.output, args.overwrite, args.clip, UsgsSiteStatus(args.site_status), args.start_dt, args.end_dt)
+    main(args.extent, args.output, args.overwrite, args.clip, UsgsSiteStatus(args.site_status), args.start_dt, args.end_dt,
+         args.period)
