@@ -62,6 +62,20 @@ class GetUsgsGages(object):
             direction="Input")
         end_dt.value = None
 
+        period = arcpy.Parameter(
+            displayName="Period",
+            name="period",
+            datatype="GPString",
+            parameterType="Optional",
+            direction="Input")
+
+        modified_since = arcpy.Parameter(
+            displayName="Modified since",
+            name="modified_since ",
+            datatype="GPString",
+            parameterType="Optional",
+            direction="Input")
+
         clip = arcpy.Parameter(
             displayName="Clip to extent features",
             name="clip",
@@ -84,6 +98,8 @@ class GetUsgsGages(object):
             site_status,
             start_dt,
             end_dt,
+            period,
+            modified_since,
             clip,
             overwrite,
         ]
@@ -108,19 +124,29 @@ class GetUsgsGages(object):
 
     def execute(self, parameters: List[arcpy.Parameter], messages):
         reload(usgs_gages)
+
         extent = parameters[0].valueAsText
         out_features = parameters[1].valueAsText
         site_status = parameters[2].valueAsText
         start_dt: datetime = parameters[3].value
         end_dt: datetime = parameters[4].value
-        clip: bool = parameters[5].value
-        overwrite: bool = parameters[6].value
+        period = parameters[5].valueAsText
+        modified_since = parameters[6].valueAsText
+        clip: bool = parameters[7].value
+        overwrite: bool = parameters[8].value
+
+        start_dt = start_dt.date() if start_dt else None
+        end_dt = end_dt.date() if end_dt else None
+
         arcpy.AddMessage(f'Extent: {extent}')
         arcpy.AddMessage(f'Output features: {out_features}')
         arcpy.AddMessage(f'Site status: {site_status}')
         arcpy.AddMessage(f'Start date: {start_dt}')
         arcpy.AddMessage(f'End date: {end_dt}')
+        arcpy.AddMessage(f'Period: {period}')
+        arcpy.AddMessage(f'Modified since: {modified_since}')
         arcpy.AddMessage(f'Clip: {clip}')
         arcpy.AddMessage(f'Overwrite: {overwrite}')
+
         usgs_gages.get_usgs_gages(extent, out_features, overwrite, clip, usgs_gages.UsgsSiteStatus(site_status),
-                                  start_dt=start_dt.date(), end_dt=end_dt.date())
+                                  start_dt=start_dt, end_dt=end_dt, period=period, modified_since=modified_since)

@@ -4,9 +4,6 @@ usgs_gages.py
 Query the NWIS Site Service
 
 TODO:
-* More query parameters
-    * period
-    * modifiedSince
 * Unit tests
 * Proper type hints
 * Proper docstrings
@@ -58,6 +55,7 @@ class UsgsSiteServiceRequest:
     lon_east: float
     lat_north: float
     period: Optional[str] = None
+    modified_since: Optional[str] = None
     site_status: UsgsSiteStatus = UsgsSiteStatus.ALL
     start_dt: Optional[date] = None
     end_dt: Optional[date] = None
@@ -76,6 +74,7 @@ class UsgsSiteServiceRequest:
             'startDt': self.start_dt.isoformat() if self.start_dt else None,
             'endDt': self.end_dt.isoformat() if self.end_dt else None,
             'period': self.period if self.period else None,
+            'modifiedSince': self.modified_since if self.modified_since else None,
         })
         return response
 
@@ -138,7 +137,10 @@ def write_feature_class(path: str, df: pd.DataFrame, fields: list, col_x: str, c
             values = [df_row[col] for col in df.columns]
             point = (df_row[col_x], df_row[col_y])
             row = [*values, point]
-            ic.insertRow(row)
+            try:
+                ic.insertRow(row)
+            except RuntimeError as e:
+                arcpy.AddWarning(f'Failed to insert row: {row}')
 
 
 def get_wgs84_extent(feature_class: str) -> Tuple[arcpy.Point, arcpy.Point]:
@@ -153,7 +155,7 @@ def get_wgs84_extent(feature_class: str) -> Tuple[arcpy.Point, arcpy.Point]:
 
 def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: UsgsSiteStatus,
          start_dt: Optional[date] = None, end_dt: Optional[date] = None,
-         period: Optional[str] = None, modified_since: Optional[date] = None):
+         period: Optional[str] = None, modified_since: Optional[str] = None):
     if clip:
         output_dirname = 'memory'
         output_basename = arcpy.ValidateTableName(os.path.splitext(os.path.basename(output))[0], output_dirname)
@@ -171,6 +173,7 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
     usgs_gages_request.start_dt = start_dt
     usgs_gages_request.end_dt = end_dt
     usgs_gages_request.period = period
+    usgs_gages_request.modified_since = modified_since
     usgs_gages_response = usgs_gages_request.get()
 
     # load response into DataFrame
@@ -186,7 +189,7 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
     create_feature_class(output_dirname, output_basename, fields)
 
     # if writing out to a shapefile, replace NaN values in the DataFrame.
-    if extent.lower().endswith('.shp'):
+    if output.lower().endswith('.shp'):
         df = replace_nan(df)
 
     if clip:
@@ -215,10 +218,12 @@ if __name__ == '__main__':
                         help="Query for gages with a specific site status")
     parser.add_argument('--period', help=("Query for gages that collected data in this period (e.g. 'P7D' for last 7 days; " 
                                           "ISO 8601 Duration format, years and months are not supported)"))
+    parser.add_argument('--modified-since', help=("Query for gages where site information has changed in this period (e.g. 'P7D' for last 7 days; " 
+                                                  "ISO 8601 Duration format, years and months are not supported)"))
     parser.add_argument('--start-dt', type=date.fromisoformat, help="Query for gages that collected data since this date")
     parser.add_argument('--end-dt', type=date.fromisoformat, help="Query for gages that collected data before this date")
     args = parser.parse_args()
     if args.period and (args.start_dt or args.end_dt):
         raise ValueError("Cannot specify both 'period' and 'start_dt'/'end_dt'")
     main(args.extent, args.output, args.overwrite, args.clip, UsgsSiteStatus(args.site_status), args.start_dt, args.end_dt,
-         args.period)
+         args.period, args.modified_since)
