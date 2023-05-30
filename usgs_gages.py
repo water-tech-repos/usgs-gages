@@ -4,10 +4,12 @@ usgs_gages.py
 Query the NWIS Site Service
 
 TODO:
-* Unit tests
 * Proper type hints
 * Proper docstrings
 * Reimplement with open-source libraries
+
+DOING:
+* Unit tests
 
 DONE:
 * More query parameters
