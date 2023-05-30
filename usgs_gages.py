@@ -4,9 +4,6 @@ usgs_gages.py
 Query the NWIS Site Service
 
 TODO:
-* More query parameters
-    * period
-    * modifiedSince
 * Unit tests
 * Proper type hints
 * Proper docstrings
@@ -30,7 +27,7 @@ from datetime import date
 from enum import Enum
 from io import StringIO
 import os
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 USGS_SITE_API_BASE_URL = 'https://waterservices.usgs.gov/nwis/site/'
@@ -42,6 +39,7 @@ DEC_LONG_VA = 'dec_long_va'
 PANDAS_ESRI_DTYPES = {
     np.dtype('O'): 'TEXT',
     np.dtype('float64'): 'DOUBLE',
+    np.dtype('int64'): 'LONG',
 }
 
 
@@ -56,6 +54,8 @@ class UsgsSiteServiceRequest:
     lat_south: float
     lon_east: float
     lat_north: float
+    period: Optional[str] = None
+    modified_since: Optional[str] = None
     site_status: UsgsSiteStatus = UsgsSiteStatus.ALL
     start_dt: Optional[date] = None
     end_dt: Optional[date] = None
@@ -73,14 +73,32 @@ class UsgsSiteServiceRequest:
             'siteStatus': self.site_status.value,
             'startDt': self.start_dt.isoformat() if self.start_dt else None,
             'endDt': self.end_dt.isoformat() if self.end_dt else None,
+            'period': self.period if self.period else None,
+            'modifiedSince': self.modified_since if self.modified_since else None,
         })
         return response
 
 
 def parse_sites(sites_data: str) -> pd.DataFrame:
-    df: pd.DataFrame = pd.read_csv(StringIO(sites_data), sep='\t', comment='#', header=[0, 1],
-                                   dtype={'site_no': str, 'huc_cd': str})
-    df.columns = df.columns.droplevel(1)
+    linecount = 0
+    datalines: List[str] = []
+    for line in sites_data.splitlines():
+        if line.startswith('#'):
+            # drop any comment lines
+            pass
+        elif linecount == 0:
+            column_names = line.split('\t')
+            linecount += 1
+        elif linecount == 1:
+            # column types -- ignore these, infer below in pd.read_csv
+            linecount += 1
+        else:
+            datalines.append(line)
+    data = '\n'.join(datalines)
+
+    df: pd.DataFrame = pd.read_csv(StringIO(data), sep='\t', comment='#', names=column_names, dtype={'site_no': str, 'huc_cd': str})
+
+    # drop rows with missing lat/long
     df.dropna(subset=[DEC_LAT_VA, DEC_LONG_VA], inplace=True)
     return df
 
@@ -119,7 +137,10 @@ def write_feature_class(path: str, df: pd.DataFrame, fields: list, col_x: str, c
             values = [df_row[col] for col in df.columns]
             point = (df_row[col_x], df_row[col_y])
             row = [*values, point]
-            ic.insertRow(row)
+            try:
+                ic.insertRow(row)
+            except RuntimeError as e:
+                arcpy.AddWarning(f'Failed to insert row: {row}')
 
 
 def get_wgs84_extent(feature_class: str) -> Tuple[arcpy.Point, arcpy.Point]:
@@ -134,14 +155,13 @@ def get_wgs84_extent(feature_class: str) -> Tuple[arcpy.Point, arcpy.Point]:
 
 def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: UsgsSiteStatus,
          start_dt: Optional[date] = None, end_dt: Optional[date] = None,
-         period: Optional[str] = None, modified_since: Optional[date] = None):
+         period: Optional[str] = None, modified_since: Optional[str] = None):
     if clip:
         output_dirname = 'memory'
         output_basename = arcpy.ValidateTableName(os.path.splitext(os.path.basename(output))[0], output_dirname)
         output_tmp = os.path.join(output_dirname, output_basename)
     else:
         output_dirname = os.path.dirname(output)
-        # output_basename = arcpy.ValidateTableName(os.path.basename(output), output_dirname)
         output_basename = os.path.basename(output)
 
     # get extent in WGS-84 coordinates
@@ -152,6 +172,8 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
     usgs_gages_request.site_status = site_status
     usgs_gages_request.start_dt = start_dt
     usgs_gages_request.end_dt = end_dt
+    usgs_gages_request.period = period
+    usgs_gages_request.modified_since = modified_since
     usgs_gages_response = usgs_gages_request.get()
 
     # load response into DataFrame
@@ -167,7 +189,7 @@ def main(extent: str, output: str, overwrite: bool, clip: bool, site_status: Usg
     create_feature_class(output_dirname, output_basename, fields)
 
     # if writing out to a shapefile, replace NaN values in the DataFrame.
-    if extent.lower().endswith('.shp'):
+    if output.lower().endswith('.shp'):
         df = replace_nan(df)
 
     if clip:
@@ -194,7 +216,14 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite', action='store_true', help="Overwrite an existing output feature class")
     parser.add_argument('--site-status', choices=[s.value for s in UsgsSiteStatus], default=UsgsSiteStatus.ALL.value,
                         help="Query for gages with a specific site status")
+    parser.add_argument('--period', help=("Query for gages that collected data in this period (e.g. 'P7D' for last 7 days; " 
+                                          "ISO 8601 Duration format, years and months are not supported)"))
+    parser.add_argument('--modified-since', help=("Query for gages where site information has changed in this period (e.g. 'P7D' for last 7 days; " 
+                                                  "ISO 8601 Duration format, years and months are not supported)"))
     parser.add_argument('--start-dt', type=date.fromisoformat, help="Query for gages that collected data since this date")
     parser.add_argument('--end-dt', type=date.fromisoformat, help="Query for gages that collected data before this date")
     args = parser.parse_args()
-    main(args.extent, args.output, args.overwrite, args.clip, UsgsSiteStatus(args.site_status), args.start_dt, args.end_dt)
+    if args.period and (args.start_dt or args.end_dt):
+        raise ValueError("Cannot specify both 'period' and 'start_dt'/'end_dt'")
+    main(args.extent, args.output, args.overwrite, args.clip, UsgsSiteStatus(args.site_status), args.start_dt, args.end_dt,
+         args.period, args.modified_since)
